@@ -1,0 +1,38 @@
+# Qwen keepalive shim on tim-nas. This file (plus .env) is ALL that lives
+# on the NAS: the image is built by GitHub Actions and pulled from GHCR,
+# no source code and no build on the NAS. Releases are git tags; set
+# IMAGE_TAG in .env to the release to run.
+#
+# Path: internet -> Cloudflare -> existing "Tim NAS" tunnel connector
+#       (pokebinder-cloudflared-1) -> qwen-shim:8080 -> Qwen server.
+#
+# The shim joins pokebinder_default because that is the network the tunnel's
+# only connector lives on, and Cloudflare can only resolve service-name
+# origins for containers on the connector's own network (the lesson from
+# muse-calling). Its host port 18090 is published as a fallback origin and
+# for curl tests from the NAS itself.
+
+services:
+  qwen-shim:
+    image: ghcr.io/timothylock/qwen-cloudflare-tunnel:${IMAGE_TAG:-v0.1.0}
+    container_name: qwen-shim
+    restart: unless-stopped
+    environment:
+      UPSTREAM_BASE: ${UPSTREAM_BASE:-http://100.110.158.5:8080}
+      SHIM_API_KEY: ${SHIM_API_KEY:?set SHIM_API_KEY in .env}
+      LISTEN_PORT: "8080"
+      HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-15}
+      STREAM_COMMIT_DELAY: ${STREAM_COMMIT_DELAY:-10}
+      NONSTREAM_COMMIT_DELAY: ${NONSTREAM_COMMIT_DELAY:-45}
+      MAX_REQUEST_SECONDS: ${MAX_REQUEST_SECONDS:-1800}
+      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-33554432}
+    ports:
+      - "18090:8080"
+    networks:
+      - default
+      - pokebinder
+
+networks:
+  pokebinder:
+    external: true
+    name: pokebinder_default
