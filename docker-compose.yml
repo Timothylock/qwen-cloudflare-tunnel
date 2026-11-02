@@ -14,7 +14,7 @@
 
 services:
   qwen-shim:
-    image: ghcr.io/timothylock/qwen-cloudflare-tunnel:${IMAGE_TAG:-v0.1.0}
+    image: ghcr.io/timothylock/qwen-cloudflare-tunnel:${IMAGE_TAG:-v0.1.1}
     container_name: qwen-shim
     restart: unless-stopped
     environment:

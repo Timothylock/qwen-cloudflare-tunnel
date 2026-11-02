@@ -115,6 +115,17 @@ def main():
         check("fast upstream error keeps real status", s == 500 and b"mock boom" in b,
               f"status={s}")
 
+        # Late non-JSON error after an early SSE commit must still reach the
+        # client as one parseable `data:` event, not raw multi-line HTML.
+        s, _, b, _, _ = req("POST", "/error?late=3&text=1", spayload, AUTH)
+        events = [l[6:] for l in b.decode().splitlines() if l.startswith("data: ")]
+        try:
+            ok = s == 200 and "error" in json.loads(events[-1]) and b"<h1>" not in b
+        except (ValueError, IndexError):
+            ok = False
+        check("late non-JSON error under SSE becomes a JSON error event", ok,
+              f"status={s} body={b[-60:]!r}")
+
         # Security: a 401's unread body must not be parsed as a second request on
         # the reused connection, and chunked uploads are refused outright.
         smuggled = (f"GET /v1/models HTTP/1.1\r\nHost: x\r\n"

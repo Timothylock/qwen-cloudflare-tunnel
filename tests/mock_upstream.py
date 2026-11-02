@@ -38,7 +38,15 @@ class H(BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b""
         q = parse_qs(urlparse(self.path).query)
         if self.path.startswith("/error"):
-            time.sleep(1)
+            time.sleep(float(q.get("late", ["1"])[0]))
+            if "text" in q:  # non-JSON, multi-line error page
+                body = b"<html>\n<h1>502 Bad Gateway</h1>\n</html>\n"
+                self.send_response(502)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             self._json(500, {"error": {"message": "mock boom"}})
             return
         try:

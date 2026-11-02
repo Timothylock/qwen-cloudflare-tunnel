@@ -118,7 +118,8 @@ host networking.
   whitespace, so the client parses the final body normally.
 - Fast responses pass through with their real status and headers.
 - Trade-off: after an early commit the real upstream status can no longer
-  be sent. A late upstream error arrives as an error body under 200.
+  be sent. A late upstream error arrives as a JSON error body under 200
+  (a non-JSON error page is replaced by `{"error": ...}`).
   Preferable to a guaranteed 524 at 125s.
 - Hard cap: `MAX_REQUEST_SECONDS` (default 1800) per request.
 
@@ -130,7 +131,7 @@ Local, no NAS or Qwen needed (mock upstream with artificial delays, shim
 timers compressed to seconds):
 
 ```
-python3 tests/run_tests.py    # 9 cases: auth, fast/slow, stream/non-stream, errors, smuggling
+python3 tests/run_tests.py    # 10 cases: auth, fast/slow, stream/non-stream, errors, smuggling
 ```
 
 ## Files

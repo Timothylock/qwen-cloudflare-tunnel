@@ -239,8 +239,14 @@ class Handler(BaseHTTPRequestHandler):
                                     len(payload))
                         self.wfile.write(payload)
                     else:
-                        if mode == "early" and stream:  # late non-200 under SSE
-                            payload = b"data: " + payload.strip() + b"\n\n"
+                        if mode == "early" and resp.status != 200:  # late error under 200
+                            try:
+                                err = json.loads(payload)
+                            except ValueError:  # HTML/text/bad UTF-8 error page
+                                err = error_obj(f"upstream returned HTTP {resp.status}")
+                            payload = json.dumps(err).encode()  # one line: SSE-safe
+                            if stream:
+                                payload = b"data: " + payload + b"\n\n"
                         self._chunk(payload)
                         self.wfile.write(b"0\r\n\r\n")
                     log(f"{self.command} {self.path} -> {resp.status} "
