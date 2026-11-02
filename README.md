@@ -6,7 +6,7 @@ with a keepalive shim in front so long generations survive Cloudflare's
 ~125s silence limit (error 524, not configurable on Free/Pro).
 
 ```
-client -> https://qwen.timlock.dev
+client -> https://ai.timlock.dev
        -> Cloudflare -> Tim NAS tunnel (pokebinder-cloudflared-1)
        -> qwen-shim:8080        (this project, on tim-nas)
        -> http://100.110.158.5:8001   (Qwen server, port in .env)
@@ -19,8 +19,8 @@ client -> https://qwen.timlock.dev
   route to .5 is direct, port 8001 open.
 - The upstream requires its **own API key**: `GET /v1/models` without one
   returns 401. That is the only key in the whole path (see Transparency).
-- Hostname **qwen.timlock.dev** is still an assumption. Pick another in the
-  Cloudflare step if you prefer; nothing in this project depends on it.
+- Hostname **ai.timlock.dev**: route created by Timothy in Cloudflare on
+  2026-11-02, pointing at the shim (see the Cloudflare section below).
 - `/health` on the shim answers even while the upstream is down, and
   `/health/upstream` tells you which side is at fault.
 
@@ -75,12 +75,11 @@ Only two files go on the NAS: `docker-compose.yml` and `.env`, in
    # 502 {"status": "unreachable"}   (details in `docker logs qwen-shim`)
    ```
 
-## The one Cloudflare step (Timothy, in the dashboard)
+## Cloudflare route (done by Timothy, 2026-11-02)
 
-Zero Trust -> Networks -> Connectors -> the existing **Tim NAS** tunnel ->
-Published application routes -> Add:
+On the existing **Tim NAS** tunnel, a published application route:
 
-- Hostname: `qwen.timlock.dev`
+- Hostname: `ai.timlock.dev`
 - Service: `http://qwen-shim:8080`
 - No path restriction.
 
@@ -95,7 +94,7 @@ host networking.
 
 ## Client setup
 
-- Base URL: `https://qwen.timlock.dev/v1`
+- Base URL: `https://ai.timlock.dev/v1`
 - API key: the **Qwen server's own key**, exactly as if you were talking to
   it directly. The shim never sees a key of its own (see Transparency)
 - Request bodies need a plain `Content-Length`, max `MAX_BODY_BYTES`
