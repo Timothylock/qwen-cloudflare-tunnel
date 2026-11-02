@@ -9,18 +9,19 @@ with a keepalive shim in front so long generations survive Cloudflare's
 client -> https://qwen.timlock.dev
        -> Cloudflare -> Tim NAS tunnel (pokebinder-cloudflared-1)
        -> qwen-shim:8080        (this project, on tim-nas)
-       -> http://100.110.158.5:8080   (Qwen server, port in .env)
+       -> http://100.110.158.5:8001   (Qwen server, port in .env)
 ```
 
-## Assumptions baked in (change in one place each)
+## Verified facts (checked from the NAS, 2026-11-02)
 
-- Upstream port **8080** (llama.cpp default). vLLM = 8000, Ollama = 11434,
-  LM Studio = 1234. Edit `UPSTREAM_BASE` in `.env` if yours differs.
-- Hostname **qwen.timlock.dev**. Pick another in the Cloudflare step if you
-  prefer; nothing in this project depends on it.
-- The NAS can reach 100.110.158.5 on its LAN. The Qwen box being down for an
-  OS update is fine: deploy now, it starts working when the box returns.
-  `/health` on the shim answers even while the upstream is down, and
+- Upstream is **http://100.110.158.5:8001** with the API under `/v1`. The
+  NAS itself is 100.110.158.36/26 on the same subnet (100.110.158.0/26),
+  route to .5 is direct, port 8001 open.
+- The upstream requires its **own API key**: `GET /v1/models` without one
+  returns 401. Use that same key as `SHIM_API_KEY` (see Deploy step 1).
+- Hostname **qwen.timlock.dev** is still an assumption. Pick another in the
+  Cloudflare step if you prefer; nothing in this project depends on it.
+- `/health` on the shim answers even while the upstream is down, and
   `/health/upstream` tells you which side is at fault.
 
 ## Releases

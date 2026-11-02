@@ -29,7 +29,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-UPSTREAM_BASE = os.environ.get("UPSTREAM_BASE", "http://100.110.158.5:8080").rstrip("/")
+UPSTREAM_BASE = os.environ.get("UPSTREAM_BASE", "http://100.110.158.5:8001").rstrip("/")
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "8080"))
 HEARTBEAT_INTERVAL = float(os.environ.get("HEARTBEAT_INTERVAL", "15"))
 STREAM_COMMIT_DELAY = float(os.environ.get("STREAM_COMMIT_DELAY", "10"))
