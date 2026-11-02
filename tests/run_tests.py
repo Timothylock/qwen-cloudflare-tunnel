@@ -68,7 +68,7 @@ def main():
     shim_env = {**os.environ,
                 "UPSTREAM_BASE": f"http://127.0.0.1:{MOCK_PORT}",
                 "LISTEN_PORT": str(SHIM_PORT),
-                "SHIM_API_KEY": KEY,
+                "MAX_BODY_BYTES": "128",
                 "HEARTBEAT_INTERVAL": "1",
                 "STREAM_COMMIT_DELAY": "2",
                 "NONSTREAM_COMMIT_DELAY": "3"}
@@ -79,10 +79,18 @@ def main():
         assert wait_port(MOCK_PORT) and wait_port(SHIM_PORT), "servers did not start"
 
         s, _, b, _, _ = req("GET", "/health")
-        check("health (no auth needed)", s == 200 and b'"ok"' in b, f"status={s}")
+        check("health", s == 200 and b'"ok"' in b, f"status={s}")
 
+        # Transparency: the shim holds no key of its own. No Authorization is
+        # proxied as-is (mock has no auth, so it answers), and any key sent
+        # reaches the upstream byte-for-byte, checked only by the upstream.
         s, _, b, _, _ = req("GET", "/v1/models")
-        check("unauthenticated request rejected", s == 401, f"status={s}")
+        check("no-key request proxied transparently", s == 200 and b"qwen-mock" in b,
+              f"status={s}")
+
+        s, _, b, _, _ = req("GET", "/echo", headers=AUTH)
+        ok = s == 200 and json.loads(b)["authorization"] == f"Bearer {KEY}"
+        check("Authorization forwarded verbatim", ok, f"status={s} body={b!r}")
 
         s, _, b, _, _ = req("GET", "/v1/models", headers=AUTH)
         check("fast GET passthrough", s == 200 and b"qwen-mock" in b, f"status={s}")
@@ -126,20 +134,21 @@ def main():
         check("late non-JSON error under SSE becomes a JSON error event", ok,
               f"status={s} body={b[-60:]!r}")
 
-        # Security: a 401's unread body must not be parsed as a second request on
-        # the reused connection, and chunked uploads are refused outright.
-        smuggled = (f"GET /v1/models HTTP/1.1\r\nHost: x\r\n"
-                    f"Authorization: Bearer {KEY}\r\n\r\n").encode()
+        # Security: an error path that leaves the body unread (413 over
+        # MAX_BODY_BYTES, 400 for chunked framing) must close the connection,
+        # so the unread bytes can never be parsed as a second request on a
+        # connection cloudflared reuses.
+        smuggled = b"GET /v1/models HTTP/1.1\r\nHost: x\r\n\r\n"
+        big_body = smuggled + b"x" * 200  # 245 bytes > test MAX_BODY_BYTES=128
         r1 = raw(b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\n"
-                 b"Content-Length: %d\r\n\r\n%s" % (len(smuggled), smuggled))
+                 b"Content-Length: %d\r\n\r\n%s" % (len(big_body), big_body))
         r2 = raw(b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\n"
-                 b"Authorization: Bearer " + KEY.encode() + b"\r\n"
                  b"Transfer-Encoding: chunked\r\n\r\n"
                  b"5\r\nhello\r\n0\r\n\r\n" + smuggled)
-        ok = (r1 is not None and r1.count(b"HTTP/1.1 ") == 1 and r1.startswith(b"HTTP/1.1 401")
+        ok = (r1 is not None and r1.count(b"HTTP/1.1 ") == 1 and r1.startswith(b"HTTP/1.1 413")
               and b"qwen-mock" not in r1 and r2 is not None and r2.count(b"HTTP/1.1 ") == 1
               and r2.startswith(b"HTTP/1.1 400"))
-        check("security: no smuggled 2nd response after 401 / chunked upload", ok,
+        check("security: no smuggled 2nd response after 413 / chunked upload", ok,
               f"r1={r1[:12] if r1 else r1!r} r2={r2[:12] if r2 else r2!r}")
     finally:
         shim.terminate()

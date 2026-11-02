@@ -31,6 +31,9 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path.startswith("/echo"):
+            self._json(200, {"authorization": self.headers.get("Authorization") or ""})
+            return
         self._json(200, {"object": "list", "data": [{"id": "qwen-mock"}]})
 
     def do_POST(self):

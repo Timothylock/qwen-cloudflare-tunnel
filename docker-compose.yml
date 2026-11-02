@@ -14,12 +14,11 @@
 
 services:
   qwen-shim:
-    image: ghcr.io/timothylock/qwen-cloudflare-tunnel:${IMAGE_TAG:-v0.1.2}
+    image: ghcr.io/timothylock/qwen-cloudflare-tunnel:${IMAGE_TAG:-v0.1.3}
     container_name: qwen-shim
     restart: unless-stopped
     environment:
       UPSTREAM_BASE: ${UPSTREAM_BASE:-http://100.110.158.5:8001}
-      SHIM_API_KEY: ${SHIM_API_KEY:?set SHIM_API_KEY in .env}
       LISTEN_PORT: "8080"
       HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-15}
       STREAM_COMMIT_DELAY: ${STREAM_COMMIT_DELAY:-10}

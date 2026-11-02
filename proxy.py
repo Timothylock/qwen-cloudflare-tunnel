@@ -15,10 +15,14 @@ the line alive:
 
 Trade-off: after an early commit the real status is gone, so a late
 upstream error arrives as an error body under 200. Better than a 524.
+
+The shim is transparent: it holds no credentials of its own. Authorization
+(and every other non-hop-by-hop header) passes through untouched, so the
+upstream's API key is the only key, configured only on the server and the
+client. Rotating it never touches the shim.
 Stdlib only; configured by environment variables (see .env.example).
 """
 
-import hmac
 import http.client
 import json
 import os
@@ -36,7 +40,6 @@ STREAM_COMMIT_DELAY = float(os.environ.get("STREAM_COMMIT_DELAY", "10"))
 NONSTREAM_COMMIT_DELAY = float(os.environ.get("NONSTREAM_COMMIT_DELAY", "45"))
 MAX_REQUEST_SECONDS = float(os.environ.get("MAX_REQUEST_SECONDS", "1800"))
 MAX_BODY_BYTES = int(os.environ.get("MAX_BODY_BYTES", str(32 * 1024 * 1024)))
-SHIM_API_KEY = os.environ.get("SHIM_API_KEY", "")
 
 _up = urlparse(UPSTREAM_BASE)
 UPSTREAM_PREFIX = _up.path.rstrip("/")
@@ -119,13 +122,6 @@ class Handler(BaseHTTPRequestHandler):
         self._chunk(b"data: " + err + b"\n\n" if stream else err)
         self.wfile.write(b"0\r\n\r\n")
 
-    def _authorized(self):
-        if not SHIM_API_KEY:
-            return True
-        auth = str(self.headers.get("Authorization") or "")  # first value only
-        return hmac.compare_digest(auth.encode("latin-1", "replace"),
-                                   f"Bearer {SHIM_API_KEY}".encode())
-
     # ---- entry point -------------------------------------------------------
     def _handle(self):
         lengths = [v.strip() for v in self.headers.get_all("Content-Length") or []]
@@ -143,9 +139,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._reply(200, {"status": "ok"})
         if self.path == "/health/upstream":
             return self._health_upstream()
-        if not self._authorized():
-            return self._reply(401, {"error": {"message": "invalid api key",
-                                               "type": "invalid_request_error"}})
 
         body = self.rfile.read(length) if length else b""
         if len(body) != length:
@@ -268,8 +261,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    if not SHIM_API_KEY:
-        log("WARNING: SHIM_API_KEY is empty - the shim will forward any request.")
     log(f"qwen-shim listening on :{LISTEN_PORT} -> {UPSTREAM_BASE} "
         f"(heartbeat {HEARTBEAT_INTERVAL}s, stream commit {STREAM_COMMIT_DELAY}s, "
         f"non-stream commit {NONSTREAM_COMMIT_DELAY}s, max body {MAX_BODY_BYTES}B)")

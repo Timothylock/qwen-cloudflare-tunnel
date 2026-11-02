@@ -18,7 +18,7 @@ client -> https://qwen.timlock.dev
   NAS itself is 100.110.158.36/26 on the same subnet (100.110.158.0/26),
   route to .5 is direct, port 8001 open.
 - The upstream requires its **own API key**: `GET /v1/models` without one
-  returns 401. Use that same key as `SHIM_API_KEY` (see Deploy step 1).
+  returns 401. That is the only key in the whole path (see Transparency).
 - Hostname **qwen.timlock.dev** is still an assumption. Pick another in the
   Cloudflare step if you prefer; nothing in this project depends on it.
 - `/health` on the shim answers even while the upstream is down, and
@@ -38,17 +38,13 @@ on the NAS once.
 Only two files go on the NAS: `docker-compose.yml` and `.env`, in
 `/volume2/docker/qwen-tunnel`.
 
-1. Configure secrets (they stay on the NAS):
+1. Optionally edit `.env` (there are no secrets in it):
 
    ```
    cd /volume2/docker/qwen-tunnel
    cp .env.example .env
-   # edit .env: set SHIM_API_KEY to a long random value (compose refuses
-   # to start without it; proxy.py alone treats it as optional for tests),
-   # and IMAGE_TAG to the release to run.
-   # If the Qwen server itself runs with an --api-key, use the SAME value
-   # there: the shim checks the client's key, then forwards the header
-   # upstream untouched.
+   # defaults are already correct; .env only pins IMAGE_TAG and any
+   # upstream/timer overrides.
    ```
 
 2. Start it (UGOS Docker project import also works):
@@ -73,7 +69,7 @@ Only two files go on the NAS: `docker-compose.yml` and `.env`, in
    Once the Qwen box is back:
 
    ```
-   curl localhost:18090/v1/models -H "Authorization: Bearer <SHIM_API_KEY>"
+   curl localhost:18090/v1/models -H "Authorization: Bearer <QWEN_API_KEY>"
    curl localhost:18090/health/upstream
    # 200 {"status": "reachable", "upstream_status": 200}
    # 502 {"status": "unreachable"}   (details in `docker logs qwen-shim`)
@@ -100,14 +96,26 @@ host networking.
 ## Client setup
 
 - Base URL: `https://qwen.timlock.dev/v1`
-- API key: the `SHIM_API_KEY` value, sent as `Authorization: Bearer <key>`
-  (the only accepted form)
+- API key: the **Qwen server's own key**, exactly as if you were talking to
+  it directly. The shim never sees a key of its own (see Transparency)
 - Request bodies need a plain `Content-Length`, max `MAX_BODY_BYTES`
   (32 MiB, else 413). Chunked uploads (`Transfer-Encoding`) get 400.
 - Prefer `stream: true`. Non-streaming works too (the shim heartbeats it),
   it just cannot show progress and wastes the whole wait if the client
   times out on its own side first. Also raise the client's own request
   timeout; Cloudflare is no longer the binding constraint, the client is.
+
+## Transparency
+
+The shim holds no credentials and keeps no per-client state. Authorization
+and all other non-hop-by-hop headers are forwarded untouched, bodies are
+forwarded as sent, and upstream statuses and bodies come back as-is
+(subject only to the early-commit trade-off below). Rotate the Qwen API
+key on the server and your clients; there is nothing to update here or in
+the NAS `.env`. The only transformations are transport-level, and exist
+solely to beat the timeout: `Accept-Encoding`/`Expect` are not forwarded
+(heartbeat bytes must never prefix a compressed body), and heartbeats are
+inserted into otherwise silent responses.
 
 ## How the timeout is beaten
 
@@ -132,7 +140,7 @@ Local, no NAS or Qwen needed (mock upstream with artificial delays, shim
 timers compressed to seconds):
 
 ```
-python3 tests/run_tests.py    # 10 cases: auth, fast/slow, stream/non-stream, errors, smuggling
+python3 tests/run_tests.py    # 11 cases: transparency, fast/slow, stream/non-stream, errors, smuggling
 ```
 
 ## Files
